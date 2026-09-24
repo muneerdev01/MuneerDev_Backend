@@ -1,4 +1,9 @@
-# Models package
+# Ghalt Path (Agar __init__.py me export nahi hai)
+from models import BlogType
+# main.py me is tarah import karein:
+from models.enums import BlogType, ArticleStatus, ContentFormat, EntityType
+# Sahi Path (Sahi file path jahan BlogType class/enum bani hui hai)
+from models.blog import BlogType  # ya from models.schemas import BlogType# Models package
 from .enums import BlogType, ArticleStatus, ContentFormat, EntityType
 from .category import Category
 from .tag import Tag
@@ -21,3 +26,4 @@ __all__ = [
     "MediaAsset",
     "AuditLog",
 ]
+
