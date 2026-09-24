@@ -1,0 +1,40 @@
+# Python virtual environments
+venv/
+env/
+ENV/
+.venv/
+muneerdev_backend/venv/
+
+# Python bytecode / Cache
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+*.pyc
+
+# Environment variables (Secrets & Keys)
+.env
+.env.*
+!.env.example
+
+# Local Database & SQLite files
+*.sqlite3
+*.db
+
+# Testing & Coverage
+.pytest_cache/
+.coverage
+htmlcov/
+
+# IDE / Editor settings
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS generated files
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
