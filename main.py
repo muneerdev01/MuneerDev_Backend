@@ -38,17 +38,31 @@ app = FastAPI(
 )
 
 
-# Configure CORS - Allow localhost:3000 and muneerdev.com
-ALLOWED_ORIGINS = [
-    "http://localhost:3000",
-    "http://127.0.0.1:3000",
-    "http://localhost:3001",
-    "http://127.0.0.1:3001",
-    "https://muneerdev.com",
-    "https://www.muneerdev.com",
-    settings.NEXT_PUBLIC_APP_URL,
-    settings.APP_URL,
-]
+# ============================================
+# CORS Configuration
+# ============================================
+# Read ALLOWED_ORIGINS from environment variable (Render)
+# Falls back to default localhost origins for local development
+ALLOWED_ORIGINS_STR = os.getenv("ALLOWED_ORIGINS", "")
+
+if ALLOWED_ORIGINS_STR:
+    ALLOWED_ORIGINS = [
+        origin.strip()
+        for origin in ALLOWED_ORIGINS_STR.split(",")
+        if origin.strip()
+    ]
+else:
+    # Fallback for local development
+    ALLOWED_ORIGINS = [
+        "http://localhost:3000",
+        "http://127.0.0.1:3000",
+        "http://localhost:3001",
+        "http://127.0.0.1:3001",
+        "https://muneerdev.com",
+        "https://www.muneerdev.com",
+    ]
+
+print(f"🌐 CORS Allowed Origins: {ALLOWED_ORIGINS}")
 
 app.add_middleware(
     CORSMiddleware,
@@ -56,6 +70,7 @@ app.add_middleware(
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
+    expose_headers=["*"],
 )
 
 
@@ -67,6 +82,7 @@ async def startup_event():
     print(f"Version: {settings.APP_VERSION}")
     print(f"App URL: {settings.APP_URL}")
     print(f"Admin Email: {settings.ADMIN_EMAIL}")
+    print(f"CORS Origins: {ALLOWED_ORIGINS}")
     print("=" * 50)
 
 
