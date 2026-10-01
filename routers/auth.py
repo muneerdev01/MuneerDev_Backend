@@ -2,6 +2,7 @@
 Authentication Router
 JWT-based authentication for Admin endpoints
 """
+import os
 from typing import List
 
 from fastapi import APIRouter, Depends, HTTPException, status, Body
@@ -31,11 +32,25 @@ router = APIRouter(prefix="/auth", tags=["authentication"])
 
 security = HTTPBearer(auto_error=False)
 
-# Hardcoded users for demo (replace with database lookup in production)
+# Render Environment Variables se Dynamic Credentials load karen
+ENV_ADMIN_EMAIL = os.getenv("ADMIN_EMAIL", "muneer.dev01@gmail.com")
+ENV_ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD", "000000")
+ENV_ADMIN_USERNAME = os.getenv("ADMIN_USERNAME", "Admin1")
+
+# In-Memory Database synced with Render Environment Variables
 USERS_DB = {
+    ENV_ADMIN_EMAIL: {
+        "id": "admin-env-uuid",
+        "email": ENV_ADMIN_EMAIL,
+        "username": ENV_ADMIN_USERNAME,
+        "password": ENV_ADMIN_PASSWORD,
+        "roles": ["ADMIN", "SUPER_ADMIN"],
+        "full_name": ENV_ADMIN_USERNAME
+    },
     "superadmin@example.com": {
         "id": "super-admin-uuid",
         "email": "superadmin@example.com",
+        "username": "superadmin",
         "password": "superadmin123",
         "roles": ["SUPER_ADMIN"],
         "full_name": "Super Admin"
@@ -43,51 +58,60 @@ USERS_DB = {
     "admin@example.com": {
         "id": "admin-uuid",
         "email": "admin@example.com",
+        "username": "admin",
         "password": "admin123",
         "roles": ["ADMIN"],
         "full_name": "Admin User"
-    },
-    "editor@example.com": {
-        "id": "editor-uuid",
-        "email": "editor@example.com",
-        "password": "editor123",
-        "roles": ["EDITOR"],
-        "full_name": "Editor User"
     }
 }
 
 
-def authenticate_user(email: str, password: str) -> dict:
+def authenticate_user(identifier: str, password: str) -> dict:
     """
-    Authenticate user against hardcoded database.
-    Replace with database lookup in production.
-    
-    Args:
-        email: User's email
-        password: User's password
-        
-    Returns:
-        User data if authenticated, None otherwise
+    Authenticate user against email, username, or hardcoded Render environment settings.
     """
-    user = USERS_DB.get(email)
+    if not identifier or not password:
+        return None
+
+    # Clean input whitespace
+    identifier = identifier.strip()
+    password = password.strip()
+
+    user = None
+
+    # 1. Direct Email Lookup
+    if identifier in USERS_DB:
+        user = USERS_DB[identifier]
+    else:
+        # 2. Username Match (e.g. Admin1 or ENV_ADMIN_EMAIL)
+        for u in USERS_DB.values():
+            if u.get("username") == identifier or u.get("email") == identifier:
+                user = u
+                break
+
+    # Fallback Direct Check for Env Variables
+    if not user:
+        if (identifier == ENV_ADMIN_EMAIL or identifier == ENV_ADMIN_USERNAME) and password == ENV_ADMIN_PASSWORD:
+            return {
+                "id": "admin-env-uuid",
+                "email": ENV_ADMIN_EMAIL,
+                "roles": ["ADMIN", "SUPER_ADMIN"],
+                "full_name": ENV_ADMIN_USERNAME
+            }
+
     if not user:
         return None
-    
-    if user["password"] != password:
+
+    # Password Verification
+    if user.get("password") != password:
         return None
-    
+
     return user
 
 
 def create_access_token(user: dict) -> Token:
     """
     Create access token for authenticated user.
-    
-    Args:
-        user: User data dict
-        
-    Returns:
-        Token with JWT
     """
     jwt_token = create_jwt_token(
         user_id=user["id"],
@@ -95,7 +119,7 @@ def create_access_token(user: dict) -> Token:
         roles=user["roles"]
     )
     
-    return Token(access_token=jwt_token, token_type="Bearer", expires_in=86400)  # 24 hours
+    return Token(access_token=jwt_token, token_type="Bearer", expires_in=86400)
 
 
 @router.post("/login", response_model=LoginResponse)
@@ -105,60 +129,51 @@ async def login(
 ):
     """
     Login endpoint for authentication.
-    
-    Args:
-        credentials: Email and password
-        
-    Returns:
-        Access token and user info
     """
+    # Accept input from email field (which can contain email or username)
     user = authenticate_user(credentials.email, credentials.password)
-    
+
     if not user:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid email or password",
             headers={"WWW-Authenticate": "Bearer"}
         )
-    
+
     token = create_access_token(user)
-    
+
     return LoginResponse(
         token=token,
         user={
             "id": user["id"],
             "email": user["email"],
             "roles": user["roles"],
-            "full_name": user.get("full_name")
+            "full_name": user.get("full_name", "Admin")
         }
     )
 
 
 @router.post("/register", response_model=RegisterResponse, status_code=status.HTTP_201_CREATED)
-async def register(
-    request: RegisterRequest
-):
+async def register(request: RegisterRequest):
     """
     Register a new user.
-    In production, this would save to database and send verification email.
     """
     if request.email in USERS_DB:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Email already registered"
         )
-    
-    # Create new user
+
     new_user = {
         "id": f"user-{len(USERS_DB) + 1}",
         "email": request.email,
         "password": request.password,
-        "roles": ["EDITOR"],  # Default role for new users
+        "roles": ["EDITOR"],
         "full_name": request.full_name or request.email.split("@")[0]
     }
-    
+
     USERS_DB[request.email] = new_user
-    
+
     return RegisterResponse(
         message="User registered successfully",
         user={
@@ -183,7 +198,7 @@ async def get_current_user(
             detail="Not authenticated",
             headers={"WWW-Authenticate": "Bearer"}
         )
-    
+
     payload = verify_jwt_token(credentials.credentials)
     if not payload:
         raise HTTPException(
@@ -191,7 +206,7 @@ async def get_current_user(
             detail="Invalid or expired token",
             headers={"WWW-Authenticate": "Bearer"}
         )
-    
+
     return {
         "id": payload.get("sub"),
         "email": payload.get("email"),
@@ -207,7 +222,7 @@ async def get_user_permissions(
     Get current user's permissions based on roles.
     """
     roles = user.get("roles", [])
-    
+
     permissions = {
         "SUPER_ADMIN": "SUPER_ADMIN" in roles,
         "ADMIN": "ADMIN" in roles,
@@ -219,16 +234,12 @@ async def get_user_permissions(
         "can_view_audits": "ADMIN" in roles or "SUPER_ADMIN" in roles,
         "can_manage_storage": "ADMIN" in roles or "SUPER_ADMIN" in roles,
     }
-    
+
     return permissions
 
 
-# Protected endpoints
 @router.get("/admin/protected")
 async def admin_protected(user: dict = ADMIN_ONLY):
-    """
-    Admin-only endpoint.
-    """
     return {
         "message": "Welcome, Admin!",
         "user_email": user.get("email"),
@@ -238,9 +249,6 @@ async def admin_protected(user: dict = ADMIN_ONLY):
 
 @router.get("/editor/protected")
 async def editor_protected(user: dict = ADMIN_OR_EDITOR):
-    """
-    Admin or Editor endpoint.
-    """
     return {
         "message": "Welcome, Admin or Editor!",
         "user_email": user.get("email"),
@@ -250,9 +258,6 @@ async def editor_protected(user: dict = ADMIN_OR_EDITOR):
 
 @router.get("/super-admin/protected")
 async def super_admin_protected(user: dict = SUPER_ADMIN_ONLY):
-    """
-    Super Admin-only endpoint.
-    """
     return {
         "message": "Welcome, Super Admin!",
         "user_email": user.get("email"),
@@ -265,15 +270,12 @@ async def create_admin_user(
     email: str = Body(..., embed=True),
     user: dict = SUPER_ADMIN_ONLY
 ):
-    """
-    Create a new admin user (Super Admin only).
-    """
     if email in USERS_DB:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Email already exists"
         )
-    
+
     new_user = {
         "id": f"user-{len(USERS_DB) + 1}",
         "email": email,
@@ -281,9 +283,9 @@ async def create_admin_user(
         "roles": ["ADMIN"],
         "full_name": email.split("@")[0]
     }
-    
+
     USERS_DB[email] = new_user
-    
+
     return {
         "message": "Admin user created successfully",
         "user": {
