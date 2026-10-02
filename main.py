@@ -7,6 +7,7 @@ import smtplib
 from contextlib import asynccontextmanager
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
+from typing import Optional
 
 from fastapi import FastAPI, Depends, Request, APIRouter, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
@@ -77,7 +78,6 @@ ENV_ORIGINS = [
     if origin.strip()
 ]
 
-# Combine both Default and Environment origins
 FINAL_ALLOWED_ORIGINS = list(set(DEFAULT_ORIGINS + ENV_ORIGINS))
 
 app.add_middleware(
@@ -92,21 +92,27 @@ app.add_middleware(
 
 
 # ============================================
-# Contact Form Endpoint Logic
+# Flexible Contact Form Endpoint Logic
 # ============================================
 contact_router = APIRouter(prefix="/contact", tags=["contact"])
 
 class ContactRequest(BaseModel):
     name: str
     email: EmailStr
-    subject: str
-    message: str
+    subject: Optional[str] = None
+    message: Optional[str] = None
+    areaOfInquiry: Optional[str] = None
+    projectScope: Optional[str] = None
 
 @contact_router.post("", status_code=status.HTTP_200_OK)
 async def handle_contact_form(data: ContactRequest):
     """
     Handle contact form submission and send email via SMTP.
+    Supports both standard and custom frontend field names.
     """
+    final_subject = data.subject or data.areaOfInquiry or "New Contact Inquiry"
+    final_message = data.message or data.projectScope or "No details provided."
+
     smtp_server = os.getenv("SMTP_SERVER", "smtp.gmail.com")
     smtp_port = int(os.getenv("SMTP_PORT", "587"))
     sender_email = os.getenv("SMTP_USER", "muneer.dev01@gmail.com")
@@ -117,30 +123,32 @@ async def handle_contact_form(data: ContactRequest):
     msg = MIMEMultipart()
     msg["From"] = sender_email
     msg["To"] = receiver_email
-    msg["Subject"] = f"[Portfolio Contact] {data.subject}"
+    msg["Subject"] = f"[Portfolio Contact] {final_subject}"
 
     body_text = f"""
     New Contact Inquiry Received:
 
     Name: {data.name}
     Sender Email: {data.email}
-    Subject: {data.subject}
+    Subject / Inquiry Area: {final_subject}
 
-    Message Details:
-    {data.message}
+    Message Details / Project Scope:
+    {final_message}
     """
     msg.attach(MIMEText(body_text, "plain"))
 
     try:
         if sender_password:
+            # Automatic space cleaning for app password
+            clean_password = sender_password.replace(" ", "").strip()
             server = smtplib.SMTP(smtp_server, smtp_port)
             server.starttls()
-            server.login(sender_email, sender_password)
+            server.login(sender_email, clean_password)
             server.send_message(msg)
             server.quit()
             return {"status": "success", "message": "Email sent successfully!"}
         
-        # Fallback logging if password is not configured yet
+        # Fallback logging if password is missing
         print(f"📩 [Contact Form Fallback Log]: {data.model_dump_json()}")
         return {"status": "success", "message": "Inquiry recorded successfully!"}
 
@@ -148,7 +156,7 @@ async def handle_contact_form(data: ContactRequest):
         print(f"❌ SMTP Error: {str(e)}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to send email. Error: {str(e)}"
+            detail=f"Failed to process message: {str(e)}"
         )
 
 
