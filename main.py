@@ -3,11 +3,16 @@ Main FastAPI Application Entry Point
 """
 import os
 import sys
+import smtplib
+from contextlib import asynccontextmanager
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
 
-from fastapi import FastAPI, Depends, Request
+from fastapi import FastAPI, Depends, Request, APIRouter, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from sqlalchemy.ext.asyncio import AsyncSession
+from pydantic import BaseModel, EmailStr
 
 # Directly import from root level folders
 from database.config import engine, get_db
@@ -27,6 +32,20 @@ from routers.public import sitemap
 from routers.admin import articles as admin_articles
 from routers.media import upload as media_upload
 
+
+# Modern Lifespan Handler for Startup/Shutdown events
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    print("=" * 50)
+    print("MuneerDev Blog API Starting...")
+    print(f"Version: {settings.APP_VERSION}")
+    print(f"App URL: {settings.APP_URL}")
+    print(f"Admin Email: {settings.ADMIN_EMAIL}")
+    print("=" * 50)
+    yield
+    print("MuneerDev Blog API Shutting Down...")
+
+
 # Create FastAPI app
 app = FastAPI(
     title="MuneerDev Blog API",
@@ -35,55 +54,102 @@ app = FastAPI(
     docs_url="/docs",
     redoc_url="/redoc",
     openapi_url="/openapi.json",
+    lifespan=lifespan
 )
 
 
 # ============================================
-# CORS Configuration
+# Robust CORS Configuration
 # ============================================
-# Read ALLOWED_ORIGINS from environment variable (Render)
-# Falls back to default localhost origins for local development
-ALLOWED_ORIGINS_STR = os.getenv("ALLOWED_ORIGINS", "")
+DEFAULT_ORIGINS = [
+    "http://localhost:3000",
+    "http://127.0.0.1:3000",
+    "http://localhost:3001",
+    "http://127.0.0.1:3001",
+    "https://muneerdev.com",
+    "https://www.muneerdev.com",
+    "https://muneer-dev-frontend-d9gp.vercel.app",
+]
 
-if ALLOWED_ORIGINS_STR:
-    ALLOWED_ORIGINS = [
-        origin.strip()
-        for origin in ALLOWED_ORIGINS_STR.split(",")
-        if origin.strip()
-    ]
-else:
-    # Fallback for local development
-    ALLOWED_ORIGINS = [
-        "http://localhost:3000",
-        "http://127.0.0.1:3000",
-        "http://localhost:3001",
-        "http://127.0.0.1:3001",
-        "https://muneerdev.com",
-        "https://www.muneerdev.com",
-    ]
+ENV_ORIGINS = [
+    origin.strip() 
+    for origin in os.getenv("ALLOWED_ORIGINS", "").split(",") 
+    if origin.strip()
+]
 
-print(f"🌐 CORS Allowed Origins: {ALLOWED_ORIGINS}")
+# Combine both Default and Environment origins
+FINAL_ALLOWED_ORIGINS = list(set(DEFAULT_ORIGINS + ENV_ORIGINS))
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=ALLOWED_ORIGINS,
+    allow_origins=FINAL_ALLOWED_ORIGINS,
+    allow_origin_regex=r"https://.*\.vercel\.app",
     allow_credentials=True,
-    allow_methods=["*"],
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"],
     allow_headers=["*"],
     expose_headers=["*"],
 )
 
 
-@app.on_event("startup")
-async def startup_event():
-    """Run on application startup"""
-    print("=" * 50)
-    print("MuneerDev Blog API Starting...")
-    print(f"Version: {settings.APP_VERSION}")
-    print(f"App URL: {settings.APP_URL}")
-    print(f"Admin Email: {settings.ADMIN_EMAIL}")
-    print(f"CORS Origins: {ALLOWED_ORIGINS}")
-    print("=" * 50)
+# ============================================
+# Contact Form Endpoint Logic
+# ============================================
+contact_router = APIRouter(prefix="/contact", tags=["contact"])
+
+class ContactRequest(BaseModel):
+    name: str
+    email: EmailStr
+    subject: str
+    message: str
+
+@contact_router.post("", status_code=status.HTTP_200_OK)
+async def handle_contact_form(data: ContactRequest):
+    """
+    Handle contact form submission and send email via SMTP.
+    """
+    smtp_server = os.getenv("SMTP_SERVER", "smtp.gmail.com")
+    smtp_port = int(os.getenv("SMTP_PORT", "587"))
+    sender_email = os.getenv("SMTP_USER", "muneer.dev01@gmail.com")
+    sender_password = os.getenv("SMTP_PASSWORD")  # Gmail App Password
+    receiver_email = "contact@muneerdev.com"
+
+    # Construct Email Message
+    msg = MIMEMultipart()
+    msg["From"] = sender_email
+    msg["To"] = receiver_email
+    msg["Subject"] = f"[Portfolio Contact] {data.subject}"
+
+    body_text = f"""
+    New Contact Inquiry Received:
+
+    Name: {data.name}
+    Sender Email: {data.email}
+    Subject: {data.subject}
+
+    Message Details:
+    {data.message}
+    """
+    msg.attach(MIMEText(body_text, "plain"))
+
+    try:
+        if sender_password:
+            server = smtplib.SMTP(smtp_server, smtp_port)
+            server.starttls()
+            server.login(sender_email, sender_password)
+            server.send_message(msg)
+            server.quit()
+            return {"status": "success", "message": "Email sent successfully!"}
+        
+        # Fallback logging if password is not configured yet
+        print(f"📩 [Contact Form Fallback Log]: {data.model_dump_json()}")
+        return {"status": "success", "message": "Inquiry recorded successfully!"}
+
+    except Exception as e:
+        print(f"❌ SMTP Error: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to send email. Error: {str(e)}"
+        )
 
 
 @app.get("/")
@@ -106,7 +172,6 @@ async def root():
 async def health_check(db: AsyncSession = Depends(get_db)):
     """Health check endpoint"""
     try:
-        # Test database connection
         result = await db.execute("SELECT 1")
         result.close()
         return {
@@ -156,6 +221,10 @@ app.include_router(media_upload.router)
 app.include_router(categories.router, prefix="/api/v1", tags=["categories"])
 app.include_router(tags.router, prefix="/api/v1", tags=["tags"])
 app.include_router(auth.router, prefix="/api/v1", tags=["authentication"])
+
+# Include Contact Form Routers (Both root level and api/v1 level)
+app.include_router(contact_router)
+app.include_router(contact_router, prefix="/api/v1")
 
 
 if __name__ == "__main__":
