@@ -1,25 +1,24 @@
 import os
 import resend
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter
 from pydantic import BaseModel, EmailStr
 
 router = APIRouter()
 
-# Resend API Key Initialization
-resend.api_key = os.getenv("RESEND_API_KEY")
-
 class ContactSchema(BaseModel):
     name: str
-    email: EmailStr
+    email: str
     subject: str
     message: str
 
 @router.post("/contact")
 async def send_contact_email(payload: ContactSchema):
     try:
-        # HTTP API (Port 443) dispatch via Resend
+        # API key is inside the function call to prevent blocking startup
+        resend.api_key = os.getenv("RESEND_API_KEY", "")
+
         email_response = resend.Emails.send({
-            "from": "Portfolio Contact <onboarding@resend.dev>",
+            "from": "MuneerDev Portfolio <onboarding@resend.dev>",
             "to": ["gmugsk@gmail.com"],
             "subject": f"Inquiry: {payload.subject}",
             "html": f"""
@@ -40,5 +39,4 @@ async def send_contact_email(payload: ContactSchema):
 
     except Exception as e:
         print(f"Resend Error: {e}")
-        # Return fallback response so client doesn't freeze or throw 500 error
         return {"status": "success", "message": "Inquiry recorded"}
