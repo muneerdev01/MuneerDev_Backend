@@ -8,6 +8,7 @@ from contextlib import asynccontextmanager
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from typing import Optional
+from routers.public.contact import router as contact_router
 
 from fastapi import FastAPI, Depends, Request, APIRouter, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
@@ -225,6 +226,7 @@ app.include_router(sitemap.router)
 
 app.include_router(admin_articles.router)
 app.include_router(media_upload.router)
+app.include_router(contact_router, prefix="/api/v1")
 
 app.include_router(categories.router, prefix="/api/v1", tags=["categories"])
 app.include_router(tags.router, prefix="/api/v1", tags=["tags"])
