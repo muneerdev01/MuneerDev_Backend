@@ -2,10 +2,12 @@
 Authentication Router
 JWT-based authentication for Admin endpoints
 """
+import hmac
 import os
+import time
 from typing import List
 
-from fastapi import APIRouter, Depends, HTTPException, status, Body
+from fastapi import APIRouter, Depends, HTTPException, Request, status, Body
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 
 from database.config import get_db
@@ -32,81 +34,65 @@ router = APIRouter(prefix="/auth", tags=["authentication"])
 
 security = HTTPBearer(auto_error=False)
 
-# Render Environment Variables se Dynamic Credentials load karen
-ENV_ADMIN_EMAIL = os.getenv("ADMIN_EMAIL", "muneer.dev01@gmail.com")
-ENV_ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD", "000000")
-ENV_ADMIN_USERNAME = os.getenv("ADMIN_USERNAME", "Admin1")
+# Admin credentials come ONLY from Render environment variables.
+# No default passwords and no hardcoded demo accounts (fail-secure).
+ENV_ADMIN_EMAIL = (os.getenv("ADMIN_EMAIL") or "").strip()
+ENV_ADMIN_PASSWORD = (os.getenv("ADMIN_PASSWORD") or "").strip()
+ENV_ADMIN_USERNAME = (os.getenv("ADMIN_USERNAME") or "").strip()
 
-# In-Memory Database synced with Render Environment Variables
-USERS_DB = {
-    ENV_ADMIN_EMAIL: {
-        "id": "admin-env-uuid",
-        "email": ENV_ADMIN_EMAIL,
-        "username": ENV_ADMIN_USERNAME,
-        "password": ENV_ADMIN_PASSWORD,
-        "roles": ["ADMIN", "SUPER_ADMIN"],
-        "full_name": ENV_ADMIN_USERNAME
-    },
-    "superadmin@example.com": {
-        "id": "super-admin-uuid",
-        "email": "superadmin@example.com",
-        "username": "superadmin",
-        "password": "superadmin123",
-        "roles": ["SUPER_ADMIN"],
-        "full_name": "Super Admin"
-    },
-    "admin@example.com": {
-        "id": "admin-uuid",
-        "email": "admin@example.com",
-        "username": "admin",
-        "password": "admin123",
-        "roles": ["ADMIN"],
-        "full_name": "Admin User"
-    }
+if not ENV_ADMIN_PASSWORD or not (ENV_ADMIN_EMAIL or ENV_ADMIN_USERNAME):
+    print("WARNING: ADMIN_EMAIL/ADMIN_USERNAME/ADMIN_PASSWORD not set - admin login is disabled")
+
+ADMIN_USER = {
+    "id": "admin-env-uuid",
+    "email": ENV_ADMIN_EMAIL,
+    "username": ENV_ADMIN_USERNAME,
+    "roles": ["ADMIN", "SUPER_ADMIN"],
+    "full_name": ENV_ADMIN_USERNAME or "Admin",
 }
 
+# Kept (empty) only so the disabled register/create-admin routes below stay importable
+USERS_DB: dict = {}
 
-def authenticate_user(identifier: str, password: str) -> dict:
-    """
-    Authenticate user against email, username, or hardcoded Render environment settings.
-    """
-    if not identifier or not password:
+# --- Brute-force protection: max 5 failed logins per IP per 15 minutes (per server instance) ---
+_FAILED: dict = {}
+_MAX_FAILS = 5
+_WINDOW = 15 * 60
+
+
+def _blocked(ip: str) -> bool:
+    now = time.time()
+    recent = [t for t in _FAILED.get(ip, []) if now - t < _WINDOW]
+    _FAILED[ip] = recent
+    return len(recent) >= _MAX_FAILS
+
+
+def _record_fail(ip: str) -> None:
+    _FAILED.setdefault(ip, []).append(time.time())
+    if len(_FAILED) > 5000:
+        _FAILED.clear()
+
+
+def _same(a: str, b: str) -> bool:
+    return hmac.compare_digest(a.encode("utf-8"), b.encode("utf-8"))
+
+
+def authenticate_user(identifier: str, password: str):
+    """Constant-time check against the single admin defined in environment variables."""
+    if not identifier or not password or not ENV_ADMIN_PASSWORD:
         return None
 
-    # Clean input whitespace
     identifier = identifier.strip()
     password = password.strip()
 
-    user = None
+    id_ok = False
+    if ENV_ADMIN_EMAIL and _same(identifier, ENV_ADMIN_EMAIL):
+        id_ok = True
+    if ENV_ADMIN_USERNAME and _same(identifier, ENV_ADMIN_USERNAME):
+        id_ok = True
+    pw_ok = _same(password, ENV_ADMIN_PASSWORD)  # always evaluated
 
-    # 1. Direct Email Lookup
-    if identifier in USERS_DB:
-        user = USERS_DB[identifier]
-    else:
-        # 2. Username Match (e.g. Admin1 or ENV_ADMIN_EMAIL)
-        for u in USERS_DB.values():
-            if u.get("username") == identifier or u.get("email") == identifier:
-                user = u
-                break
-
-    # Fallback Direct Check for Env Variables
-    if not user:
-        if (identifier == ENV_ADMIN_EMAIL or identifier == ENV_ADMIN_USERNAME) and password == ENV_ADMIN_PASSWORD:
-            return {
-                "id": "admin-env-uuid",
-                "email": ENV_ADMIN_EMAIL,
-                "roles": ["ADMIN", "SUPER_ADMIN"],
-                "full_name": ENV_ADMIN_USERNAME
-            }
-
-    if not user:
-        return None
-
-    # Password Verification
-    if user.get("password") != password:
-        return None
-
-    return user
+    return ADMIN_USER if (id_ok and pw_ok) else None
 
 
 def create_access_token(user: dict) -> Token:
@@ -125,15 +111,25 @@ def create_access_token(user: dict) -> Token:
 @router.post("/login", response_model=LoginResponse)
 async def login(
     credentials: LoginRequest,
+    request: Request,
     db=Depends(get_db)
 ):
     """
     Login endpoint for authentication.
     """
-    # Accept input from email field (which can contain email or username)
+    ip = (request.headers.get("x-forwarded-for", "").split(",")[0].strip()
+          or (request.client.host if request.client else "unknown"))
+
+    if _blocked(ip):
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="Too many failed attempts. Please try again in 15 minutes.",
+        )
+
     user = authenticate_user(credentials.email, credentials.password)
 
     if not user:
+        _record_fail(ip)
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid email or password",
@@ -153,36 +149,10 @@ async def login(
     )
 
 
-@router.post("/register", response_model=RegisterResponse, status_code=status.HTTP_201_CREATED)
+@router.post("/register", status_code=status.HTTP_403_FORBIDDEN)
 async def register(request: RegisterRequest):
-    """
-    Register a new user.
-    """
-    if request.email in USERS_DB:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Email already registered"
-        )
-
-    new_user = {
-        "id": f"user-{len(USERS_DB) + 1}",
-        "email": request.email,
-        "password": request.password,
-        "roles": ["EDITOR"],
-        "full_name": request.full_name or request.email.split("@")[0]
-    }
-
-    USERS_DB[request.email] = new_user
-
-    return RegisterResponse(
-        message="User registered successfully",
-        user={
-            "id": new_user["id"],
-            "email": new_user["email"],
-            "roles": new_user["roles"],
-            "full_name": new_user.get("full_name")
-        }
-    )
+    """Public registration is disabled (single-admin site)."""
+    raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Registration is disabled")
 
 
 @router.get("/me", response_model=dict)
@@ -239,7 +209,7 @@ async def get_user_permissions(
 
 
 @router.get("/admin/protected")
-async def admin_protected(user: dict = ADMIN_ONLY):
+async def admin_protected(user: dict = Depends(ADMIN_ONLY)):
     return {
         "message": "Welcome, Admin!",
         "user_email": user.get("email"),
@@ -248,7 +218,7 @@ async def admin_protected(user: dict = ADMIN_ONLY):
 
 
 @router.get("/editor/protected")
-async def editor_protected(user: dict = ADMIN_OR_EDITOR):
+async def editor_protected(user: dict = Depends(ADMIN_OR_EDITOR)):
     return {
         "message": "Welcome, Admin or Editor!",
         "user_email": user.get("email"),
@@ -257,7 +227,7 @@ async def editor_protected(user: dict = ADMIN_OR_EDITOR):
 
 
 @router.get("/super-admin/protected")
-async def super_admin_protected(user: dict = SUPER_ADMIN_ONLY):
+async def super_admin_protected(user: dict = Depends(SUPER_ADMIN_ONLY)):
     return {
         "message": "Welcome, Super Admin!",
         "user_email": user.get("email"),
@@ -265,32 +235,7 @@ async def super_admin_protected(user: dict = SUPER_ADMIN_ONLY):
     }
 
 
-@router.post("/super-admin/create-admin", status_code=status.HTTP_201_CREATED)
-async def create_admin_user(
-    email: str = Body(..., embed=True),
-    user: dict = SUPER_ADMIN_ONLY
-):
-    if email in USERS_DB:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Email already exists"
-        )
-
-    new_user = {
-        "id": f"user-{len(USERS_DB) + 1}",
-        "email": email,
-        "password": f"temp_{email.split('@')[0]}",
-        "roles": ["ADMIN"],
-        "full_name": email.split("@")[0]
-    }
-
-    USERS_DB[email] = new_user
-
-    return {
-        "message": "Admin user created successfully",
-        "user": {
-            "id": new_user["id"],
-            "email": new_user["email"],
-            "roles": new_user["roles"]
-        }
-    }
+@router.post("/super-admin/create-admin", status_code=status.HTTP_403_FORBIDDEN)
+async def create_admin_user():
+    """Disabled: extra admins are not supported (admin is defined via environment variables)."""
+    raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not supported")
