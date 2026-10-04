@@ -10,6 +10,7 @@ from routers.public.contact import router as contact_router
 from fastapi import FastAPI, Depends, Request, APIRouter, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 from pydantic import BaseModel, EmailStr
 
@@ -81,7 +82,7 @@ FINAL_ALLOWED_ORIGINS = list(set(DEFAULT_ORIGINS + ENV_ORIGINS))
 app.add_middleware(
     CORSMiddleware,
     allow_origins=FINAL_ALLOWED_ORIGINS,
-    allow_origin_regex=r"https://.*\.vercel\.app",
+    allow_origin_regex=r"https://muneer-dev-frontend[a-z0-9-]*\.vercel\.app",
     allow_credentials=True,
     allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"],
     allow_headers=["*"],
@@ -110,17 +111,18 @@ async def root():
 async def health_check(db: AsyncSession = Depends(get_db)):
     """Health check endpoint"""
     try:
-        result = await db.execute("SELECT 1")
+        result = await db.execute(text("SELECT 1"))
         result.close()
         return {
             "status": "healthy",
             "database": "connected",
             "api_version": settings.APP_VERSION
         }
-    except Exception as e:
+    except Exception:
+        # Do not leak internal error details to the public
         return {
             "status": "unhealthy",
-            "database": f"disconnected: {str(e)}"
+            "database": "disconnected"
         }
 
 
