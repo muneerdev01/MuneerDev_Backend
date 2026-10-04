@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
 from database.config import get_db
+from security.rbac import require_any_role
 from models import Tag, Article
 from schemas import TagSchema, TagListSchema
 from services import TagService
@@ -64,7 +65,8 @@ async def get_tag_by_slug(
 @router.post("/", response_model=TagSchema, status_code=status.HTTP_201_CREATED)
 async def create_tag(
     tag: TagSchema,
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
+    user: dict = Depends(require_any_role(["ADMIN", "SUPER_ADMIN"]))
 ):
     """Create a new tag"""
     service = TagService(db)
@@ -80,7 +82,8 @@ async def create_tag(
 async def update_tag(
     tag_id: str,
     tag: TagSchema,
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
+    user: dict = Depends(require_any_role(["ADMIN", "SUPER_ADMIN"]))
 ):
     """Update an existing tag"""
     service = TagService(db)
@@ -99,7 +102,8 @@ async def update_tag(
 @router.delete("/{tag_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_tag(
     tag_id: str,
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
+    user: dict = Depends(require_any_role(["ADMIN", "SUPER_ADMIN"]))
 ):
     """Delete a tag"""
     service = TagService(db)
