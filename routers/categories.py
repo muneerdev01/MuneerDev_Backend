@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
 from database.config import get_db
+from security.rbac import require_any_role
 from models import Category, Article
 from models.enums import BlogTypeEnum
 from schemas import CategorySchema, CategoryListSchema
@@ -69,7 +70,8 @@ async def get_category_by_slug(
 @router.post("/", response_model=CategorySchema, status_code=status.HTTP_201_CREATED)
 async def create_category(
     category: CategorySchema,
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
+    user: dict = Depends(require_any_role(["ADMIN", "SUPER_ADMIN"]))
 ):
     """Create a new category"""
     service = CategoryService(db)
@@ -85,7 +87,8 @@ async def create_category(
 async def update_category(
     category_id: str,
     category: CategorySchema,
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
+    user: dict = Depends(require_any_role(["ADMIN", "SUPER_ADMIN"]))
 ):
     """Update an existing category"""
     service = CategoryService(db)
@@ -104,7 +107,8 @@ async def update_category(
 @router.delete("/{category_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_category(
     category_id: str,
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
+    user: dict = Depends(require_any_role(["ADMIN", "SUPER_ADMIN"]))
 ):
     """Delete a category"""
     service = CategoryService(db)
