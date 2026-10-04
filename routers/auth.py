@@ -85,10 +85,12 @@ def authenticate_user(identifier: str, password: str):
     identifier = identifier.strip()
     password = password.strip()
 
+    # Email/username are matched case-insensitively (browsers and phones often change case)
+    ident = identifier.lower()
     id_ok = False
-    if ENV_ADMIN_EMAIL and _same(identifier, ENV_ADMIN_EMAIL):
+    if ENV_ADMIN_EMAIL and _same(ident, ENV_ADMIN_EMAIL.lower()):
         id_ok = True
-    if ENV_ADMIN_USERNAME and _same(identifier, ENV_ADMIN_USERNAME):
+    if ENV_ADMIN_USERNAME and _same(ident, ENV_ADMIN_USERNAME.lower()):
         id_ok = True
     pw_ok = _same(password, ENV_ADMIN_PASSWORD)  # always evaluated
 
