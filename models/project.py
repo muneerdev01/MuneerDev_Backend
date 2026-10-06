@@ -1,12 +1,12 @@
 """
 SQLAlchemy 2.0 Async Model: Project
-Path: app/models/project.py
+Path: models/project.py
 """
 from typing import List, Optional
 from datetime import datetime
 from sqlalchemy import String, Text, Boolean, JSON
 from sqlalchemy.orm import Mapped, mapped_column
-from app.db.base import Base, TimestampMixin
+from database.base import Base, TimestampMixin
 
 class Project(Base, TimestampMixin):
     __tablename__ = "projects"

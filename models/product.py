@@ -1,16 +1,16 @@
 """
 SQLAlchemy 2.0 Async Model: Product
-Path: app/models/product.py
+Path: models/product.py
 """
 import enum
 from decimal import Decimal
 from typing import List, TYPE_CHECKING
 from sqlalchemy import String, Text, Numeric, Integer, Boolean, JSON, Enum as SAEnum
 from sqlalchemy.orm import Mapped, mapped_column, relationship
-from app.db.base import Base, TimestampMixin
+from database.base import Base, TimestampMixin
 
 if TYPE_CHECKING:
-    from app.models.order import Order
+    from .order import Order
 
 class ProductCategory(str, enum.Enum):
     PATTERNS = "PATTERNS"

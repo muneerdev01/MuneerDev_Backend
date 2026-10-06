@@ -1,17 +1,17 @@
 """
 SQLAlchemy 2.0 Async Model: Order
-Path: app/models/order.py
+Path: models/order.py
 """
 import enum
 from decimal import Decimal
 from typing import TYPE_CHECKING, Optional
 from sqlalchemy import String, Numeric, ForeignKey, Enum as SAEnum
 from sqlalchemy.orm import Mapped, mapped_column, relationship
-from app.db.base import Base, TimestampMixin
+from database.base import Base, TimestampMixin
 
 if TYPE_CHECKING:
-    from app.models.product import Product
-    from app.models.download_token import DownloadToken
+    from .product import Product
+    from .download_token import DownloadToken
 
 class OrderStatus(str, enum.Enum):
     PENDING = "PENDING"

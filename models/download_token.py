@@ -1,6 +1,6 @@
 """
 SQLAlchemy 2.0 Async Model: DownloadToken
-Path: app/models/download_token.py
+Path: models/download_token.py
 """
 import uuid
 from datetime import datetime, timezone, timedelta
@@ -8,10 +8,10 @@ from typing import TYPE_CHECKING
 from sqlalchemy import ForeignKey, DateTime
 from sqlalchemy.dialects.postgresql import UUID as PG_UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
-from app.db.base import Base
+from database.base import Base
 
 if TYPE_CHECKING:
-    from app.models.order import Order
+    from .order import Order
 
 def default_expiry() -> datetime:
     """Generates UTC expiration timestamp 24 hours from creation."""

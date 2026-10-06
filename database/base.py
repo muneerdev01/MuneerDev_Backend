@@ -1,6 +1,6 @@
 """
 SQLAlchemy 2.0 Async Declarative Base
-Path: app/db/base.py
+Path: database/base.py
 """
 from datetime import datetime, timezone
 from sqlalchemy import MetaData
