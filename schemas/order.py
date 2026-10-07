@@ -6,8 +6,8 @@ from decimal import Decimal
 from datetime import datetime
 from typing import Optional
 from pydantic import BaseModel, ConfigDict, EmailStr, Field
-from app.models.order import OrderStatus
-from app.schemas.product import ProductPublicCard
+from models.order import OrderStatus
+from schemas.product import ProductPublicCard
 
 class CheckoutRequest(BaseModel):
     """Payload sent from Next.js 15 shop detail page to initiate Stripe Checkout."""

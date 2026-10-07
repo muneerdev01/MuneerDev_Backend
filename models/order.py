@@ -3,9 +3,10 @@ SQLAlchemy 2.0 Async Model: Order
 Path: models/order.py
 """
 import enum
+from datetime import datetime
 from decimal import Decimal
 from typing import TYPE_CHECKING, Optional
-from sqlalchemy import String, Numeric, ForeignKey, Enum as SAEnum
+from sqlalchemy import DateTime, String, Numeric, ForeignKey, Enum as SAEnum
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from database.base import Base, TimestampMixin
 
@@ -37,6 +38,7 @@ class Order(Base, TimestampMixin):
         index=True,
         nullable=False
     )
+    email_sent_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
 
     # Relationships
     product: Mapped["Product"] = relationship("Product", back_populates="orders", lazy="joined")

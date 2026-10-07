@@ -11,10 +11,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 from supabase import Client
 
-from app.api.deps import get_db, get_supabase_client
-from app.models.download_token import DownloadToken
-from app.models.order import Order, OrderStatus
-from app.models.product import Product
+from database.config import get_db
+from routers.deps import get_supabase_client
+from models.download_token import DownloadToken
+from models.order import Order, OrderStatus
+from models.product import Product
 
 router = APIRouter(prefix="/api/download", tags=["download"])
 
@@ -75,7 +76,7 @@ async def download_pattern_by_token(
         else token_record.expires_at.replace(tzinfo=timezone.utc)
     )
 
-    if now > target_expiry:
+    if now >= target_expiry:
         raise HTTPException(
             status_code=status.HTTP_410_GONE,
             detail="This download link expired after 24 hours. Check your email or contact support to request a new link."
@@ -101,11 +102,12 @@ async def download_pattern_by_token(
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to generate secure download link: {str(e)}"
-        )
+            detail="Failed to generate secure download link.",
+        ) from e
 
     # 7. Redirect buyer directly to download stream
     return RedirectResponse(
         url=signed_url,
-        status_code=status.HTTP_307_TEMPORARY_REDIRECT
+        status_code=status.HTTP_307_TEMPORARY_REDIRECT,
+        headers={"Cache-Control": "no-store"},
     )

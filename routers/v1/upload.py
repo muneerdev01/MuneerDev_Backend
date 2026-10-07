@@ -8,14 +8,10 @@ from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, s
 from pydantic import BaseModel
 from supabase import Client
 
-from app.api.deps import get_current_admin, get_supabase_client
+from utils.upload_validation import MAX_UPLOAD_BYTES, validate_upload
+from routers.deps import get_current_admin, get_supabase_client
 
 router = APIRouter(prefix="/api/upload", tags=["upload"])
-
-# Constraints
-MAX_FILE_SIZE_BYTES = 100 * 1024 * 1024  # 100MB
-ALLOWED_IMAGE_EXTENSIONS = {"png", "jpg", "jpeg", "webp"}
-ALLOWED_PRODUCT_EXTENSIONS = {"pdf", "zip"}
 
 class UploadResponse(BaseModel):
     file_path: str
@@ -36,56 +32,25 @@ async def upload_file(
     - Images (png/jpg/webp) -> Public bucket 'projects'
     - Product files (pdf/zip max 100MB) -> Private bucket 'products'
     """
-    filename = file.filename or "unknown"
-    ext = filename.rsplit(".", 1)[-1].lower() if "." in filename else ""
-
-    # Validate file extensions & determine bucket
-    if file_type == "image":
-        if ext not in ALLOWED_IMAGE_EXTENSIONS:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Invalid image format '.{ext}'. Allowed: {ALLOWED_IMAGE_EXTENSIONS}"
-            )
-        bucket_name = "projects"
-        storage_path = f"images/{uuid.uuid4().hex}_{filename}"
-    elif file_type == "product_file":
-        if ext not in ALLOWED_PRODUCT_EXTENSIONS:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Invalid digital product format '.{ext}'. Only PDF and ZIP allowed."
-            )
-        bucket_name = "products"
-        storage_path = f"patterns/{uuid.uuid4().hex}_{filename}"
-    else:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="file_type must be either 'image' or 'product_file'"
-        )
-
-    # Read content and enforce 100MB size limit
-    content = await file.read()
-    file_size = len(content)
-
-    if file_size > MAX_FILE_SIZE_BYTES:
-        raise HTTPException(
-            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
-            detail=f"File exceeds maximum allowed limit of 100MB (actual: {file_size / (1024*1024):.2f}MB)"
-        )
-
-    content_type = file.content_type or "application/octet-stream"
+    content = await file.read(MAX_UPLOAD_BYTES + 1)
+    content_type = validate_upload(file.filename, file.content_type, content, file_type)
+    ext = (file.filename or "").rsplit(".", 1)[-1].lower()
+    bucket_name = "projects" if file_type == "image" else "products"
+    directory = "images" if file_type == "image" else "patterns"
+    storage_path = f"{directory}/{uuid.uuid4().hex}.{ext}"
 
     try:
         # Upload buffer to Supabase Storage
-        response = supabase.storage.from_(bucket_name).upload(
+        supabase.storage.from_(bucket_name).upload(
             path=storage_path,
             file=content,
             file_options={"content-type": content_type, "upsert": "false"}
         )
-    except Exception as e:
+    except Exception as exc:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Supabase Storage upload error: {str(e)}"
-        )
+            detail="Supabase Storage upload failed.",
+        ) from exc
 
     # Compute public URL for public bucket images
     public_url = None
@@ -94,7 +59,7 @@ async def upload_file(
 
     return UploadResponse(
         file_path=storage_path,
-        file_size=file_size,
+        file_size=len(content),
         content_type=content_type,
         bucket=bucket_name,
         public_url=public_url

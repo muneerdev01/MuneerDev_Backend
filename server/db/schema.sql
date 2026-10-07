@@ -393,51 +393,52 @@ create policy "Public read resources" on public.resources
 create policy "Public read slug redirects" on public.slug_redirects
   for select using (true);
 
--- Admin full access policies (Service role bypasses RLS, but explicit for authenticated admin)
+-- Privileged access is limited to the server-side service role. Never grant
+-- this policy to every authenticated Supabase user.
 create policy "Admin full access articles" on public.articles
-  for all using (auth.role() = 'authenticated' or auth.role() = 'service_role');
+  for all using (auth.role() = 'service_role') with check (auth.role() = 'service_role');
 
 create policy "Admin full access categories" on public.categories
-  for all using (auth.role() = 'authenticated' or auth.role() = 'service_role');
+  for all using (auth.role() = 'service_role') with check (auth.role() = 'service_role');
 
 create policy "Admin full access tags" on public.tags
-  for all using (auth.role() = 'authenticated' or auth.role() = 'service_role');
+  for all using (auth.role() = 'service_role') with check (auth.role() = 'service_role');
 
 create policy "Admin full access relationships" on public.content_relationships
-  for all using (auth.role() = 'authenticated' or auth.role() = 'service_role');
+  for all using (auth.role() = 'service_role') with check (auth.role() = 'service_role');
 
 create policy "Admin full access media assets" on public.media_assets
-  for all using (auth.role() = 'authenticated' or auth.role() = 'service_role');
+  for all using (auth.role() = 'service_role') with check (auth.role() = 'service_role');
 
 create policy "Admin full access media references" on public.media_references
-  for all using (auth.role() = 'authenticated' or auth.role() = 'service_role');
+  for all using (auth.role() = 'service_role') with check (auth.role() = 'service_role');
 
 create policy "Admin full access projects" on public.projects
-  for all using (auth.role() = 'authenticated' or auth.role() = 'service_role');
+  for all using (auth.role() = 'service_role') with check (auth.role() = 'service_role');
 
 create policy "Admin full access services" on public.services
-  for all using (auth.role() = 'authenticated' or auth.role() = 'service_role');
+  for all using (auth.role() = 'service_role') with check (auth.role() = 'service_role');
 
 create policy "Admin full access products" on public.products
-  for all using (auth.role() = 'authenticated' or auth.role() = 'service_role');
+  for all using (auth.role() = 'service_role') with check (auth.role() = 'service_role');
 
 create policy "Admin full access customers" on public.customers
-  for all using (auth.role() = 'authenticated' or auth.role() = 'service_role');
+  for all using (auth.role() = 'service_role') with check (auth.role() = 'service_role');
 
 create policy "Admin full access leads" on public.leads
-  for all using (auth.role() = 'authenticated' or auth.role() = 'service_role');
+  for all using (auth.role() = 'service_role') with check (auth.role() = 'service_role');
 
 create policy "Admin full access orders" on public.orders
-  for all using (auth.role() = 'authenticated' or auth.role() = 'service_role');
+  for all using (auth.role() = 'service_role') with check (auth.role() = 'service_role');
 
 create policy "Admin full access subscriptions" on public.subscriptions
-  for all using (auth.role() = 'authenticated' or auth.role() = 'service_role');
+  for all using (auth.role() = 'service_role') with check (auth.role() = 'service_role');
 
 create policy "Admin full access licenses" on public.licenses
-  for all using (auth.role() = 'authenticated' or auth.role() = 'service_role');
+  for all using (auth.role() = 'service_role') with check (auth.role() = 'service_role');
 
 create policy "Admin full access audit logs" on public.audit_logs
-  for all using (auth.role() = 'authenticated' or auth.role() = 'service_role');
+  for all using (auth.role() = 'service_role') with check (auth.role() = 'service_role');
 
 create policy "Admin full access slug redirects" on public.slug_redirects
-  for all using (auth.role() = 'authenticated' or auth.role() = 'service_role');
+  for all using (auth.role() = 'service_role') with check (auth.role() = 'service_role');

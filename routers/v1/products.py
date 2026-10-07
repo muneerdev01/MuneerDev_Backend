@@ -9,9 +9,16 @@ from pydantic import BaseModel
 from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.deps import get_db, get_current_admin
-from app.models.product import Product, ProductCategory
-from app.schemas.product import ProductRead, ProductCreate, ProductUpdate, ProductPublicCard
+from database.config import get_db
+from routers.deps import get_current_admin
+from models.product import Product, ProductCategory
+from schemas.product import (
+    ProductCreate,
+    ProductPublicCard,
+    ProductPublicDetail,
+    ProductRead,
+    ProductUpdate,
+)
 
 router = APIRouter(prefix="/api/products", tags=["products"])
 
@@ -64,7 +71,7 @@ async def list_products(
         total_pages=total_pages
     )
 
-@router.get("/{slug}", response_model=ProductRead)
+@router.get("/{slug}", response_model=ProductPublicDetail)
 async def get_product_by_slug(
     slug: str,
     db: AsyncSession = Depends(get_db)
@@ -164,6 +171,8 @@ async def delete_product(
             detail=f"Product with slug '{slug}' not found"
         )
 
-    await db.delete(product)
+    # Preserve order and download history; inactive products disappear from
+    # public listings without invalidating past purchases.
+    product.is_active = False
     await db.commit()
     return None

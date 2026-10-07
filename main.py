@@ -1,41 +1,63 @@
 """
 Main FastAPI Application Entry Point
 """
-import os
-import sys
 from contextlib import asynccontextmanager
-from typing import Optional
 from routers.public.contact import router as contact_router
 
-from fastapi import FastAPI, Depends, Request, APIRouter, HTTPException, status
+from fastapi import FastAPI, Depends, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
-from pydantic import BaseModel, EmailStr
 
 # Directly import from root level folders
-from database.config import engine, get_db
-from models import (
-    BlogType, ArticleStatus, ContentFormat, EntityType,
-    Category, Tag, Article, ArticleTag,
-    ContentRelationship, MediaAsset, AuditLog
-)
+from database.config import get_db
+from models import BlogType, ArticleStatus, ContentFormat, EntityType
 from config.settings import settings
 
 # Import and include routers
-from routers import articles, categories, tags, auth
+from routers import auth, categories, tags
 from routers.public import articles as public_articles
 from routers.public import categories as public_categories
 from routers.public import tags as public_tags
 from routers.public import sitemap
 from routers.admin import articles as admin_articles
 from routers.media import upload as media_upload
+from routers.v1 import checkout, download, products, projects, upload, webhooks
 
 
 # Modern Lifespan Handler for Startup/Shutdown events
+def validate_production_configuration() -> None:
+    """Refuse production startup with test payments or missing critical services."""
+    problems = []
+    if not settings.STRIPE_SECRET_KEY.startswith(("sk_live_", "rk_live_")):
+        problems.append("STRIPE_SECRET_KEY must be a live-mode key")
+    for name, value in (
+        ("STRIPE_WEBHOOK_SECRET", settings.STRIPE_WEBHOOK_SECRET),
+        ("SUPABASE_URL", settings.SUPABASE_URL),
+        ("SUPABASE_SERVICE_ROLE_KEY", settings.SUPABASE_SERVICE_ROLE_KEY),
+        ("RESEND_API_KEY", settings.RESEND_API_KEY),
+        ("RESEND_FROM_EMAIL", settings.RESEND_FROM_EMAIL),
+        ("ADMIN_EMAIL", settings.ADMIN_EMAIL),
+        ("ADMIN_PASSWORD", settings.ADMIN_PASSWORD),
+    ):
+        if not value:
+            problems.append(f"{name} is required")
+    if settings.DEBUG:
+        problems.append("DEBUG must be false")
+    if settings.CORS_ALLOW_CREDENTIALS:
+        problems.append("CORS_ALLOW_CREDENTIALS must be false for bearer-token APIs")
+    if not settings.FRONTEND_URL.startswith("https://"):
+        problems.append("FRONTEND_URL must use HTTPS")
+    if not allowed_origins or any(not origin.startswith("https://") for origin in allowed_origins):
+        problems.append("ALLOWED_ORIGINS must contain HTTPS origins only")
+    if problems:
+        raise RuntimeError("Invalid production configuration: " + "; ".join(problems))
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    if settings.APP_ENV.lower() == "production":
+        validate_production_configuration()
     print("=" * 50)
     print("MuneerDev Blog API Starting...")
     print(f"Version: {settings.APP_VERSION}")
@@ -58,36 +80,41 @@ app = FastAPI(
 )
 
 
-# ============================================
-# Robust CORS Configuration
-# ============================================
-DEFAULT_ORIGINS = [
-    "http://localhost:3000",
-    "http://127.0.0.1:3000",
-    "http://localhost:3001",
-    "http://127.0.0.1:3001",
-    "https://muneerdev.com",
-    "https://www.muneerdev.com",
-    "https://muneer-dev-frontend-d9gp.vercel.app",
-]
-
-ENV_ORIGINS = [
-    origin.strip() 
-    for origin in os.getenv("ALLOWED_ORIGINS", "").split(",") 
+allowed_origins = [
+    origin.strip().rstrip("/")
+    for origin in settings.ALLOWED_ORIGINS.split(",")
     if origin.strip()
 ]
-
-FINAL_ALLOWED_ORIGINS = list(set(DEFAULT_ORIGINS + ENV_ORIGINS))
+if not allowed_origins:
+    allowed_origins = ["https://muneerdev.com", "https://www.muneerdev.com"]
+if settings.APP_ENV.lower() != "production":
+    allowed_origins.extend(["http://localhost:3000", "http://127.0.0.1:3000"])
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=FINAL_ALLOWED_ORIGINS,
-    allow_origin_regex=r"https://muneer-dev-frontend[a-z0-9-]*\.vercel\.app",
-    allow_credentials=True,
-    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"],
-    allow_headers=["*"],
-    expose_headers=["*"],
+    allow_origins=sorted(set(allowed_origins)),
+    allow_credentials=settings.CORS_ALLOW_CREDENTIALS,
+    allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+    allow_headers=["Authorization", "Content-Type", "X-Requested-With"],
 )
+
+
+@app.middleware("http")
+async def security_headers(request: Request, call_next):
+    response = await call_next(request)
+    response.headers.setdefault("X-Content-Type-Options", "nosniff")
+    response.headers.setdefault("X-Frame-Options", "DENY")
+    response.headers.setdefault("Referrer-Policy", "strict-origin-when-cross-origin")
+    response.headers.setdefault(
+        "Permissions-Policy",
+        "camera=(), microphone=(), geolocation=()",
+    )
+    if settings.APP_ENV.lower() == "production" and request.url.scheme == "https":
+        response.headers.setdefault(
+            "Strict-Transport-Security",
+            "max-age=31536000; includeSubDomains",
+        )
+    return response
 
 
 
@@ -162,6 +189,12 @@ app.include_router(contact_router, prefix="/api/v1")   # POST /api/v1/contact (R
 app.include_router(categories.router, prefix="/api/v1", tags=["categories"])
 app.include_router(tags.router, prefix="/api/v1", tags=["tags"])
 app.include_router(auth.router, prefix="/api/v1", tags=["authentication"])
+app.include_router(products.router)
+app.include_router(projects.router)
+app.include_router(checkout.router)
+app.include_router(webhooks.router)
+app.include_router(download.router)
+app.include_router(upload.router)
 
 
 

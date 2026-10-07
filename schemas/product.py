@@ -7,7 +7,7 @@ from decimal import Decimal
 from datetime import datetime
 from typing import List, Optional
 from pydantic import BaseModel, ConfigDict, Field, field_validator
-from app.models.product import ProductCategory
+from models.product import ProductCategory
 
 class ProductBase(BaseModel):
     title: str = Field(..., min_length=3, max_length=200, example="Nordic Cable Knit Sweater Pattern")
@@ -49,6 +49,16 @@ class ProductUpdate(BaseModel):
     file_size: Optional[int] = Field(None, gt=0)
     is_active: Optional[bool] = None
 
+    @field_validator("slug")
+    @classmethod
+    def validate_optional_slug(cls, value: str | None) -> str | None:
+        if value is None:
+            return value
+        cleaned = value.strip().lower()
+        if not re.match(r"^[a-z0-9]+(?:-[a-z0-9]+)*$", cleaned):
+            raise ValueError("Slug must be lowercase alphanumeric with hyphens.")
+        return cleaned
+
 class ProductRead(ProductBase):
     id: int
     sales_count: int
@@ -61,6 +71,20 @@ class ProductPublicCard(BaseModel):
     id: int
     title: str
     slug: str
+    price: Decimal
+    category: ProductCategory
+    preview_images: List[str]
+    sales_count: int
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class ProductPublicDetail(BaseModel):
+    """Public product data without private storage paths or admin controls."""
+    id: int
+    title: str
+    slug: str
+    description: str
     price: Decimal
     category: ProductCategory
     preview_images: List[str]

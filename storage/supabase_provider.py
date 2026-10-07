@@ -40,7 +40,7 @@ class SupabaseStorageProvider(StorageProvider):
             )
         
         self.url = supabase_url or get_required_env("SUPABASE_URL")
-        self.key = supabase_key or get_required_env("SUPABASE_SERVICE_KEY")
+        self.key = supabase_key or get_required_env("SUPABASE_SERVICE_ROLE_KEY")
         self._client = None
     
     @property
@@ -76,13 +76,17 @@ class SupabaseStorageProvider(StorageProvider):
             file.seek(0)  # Reset file pointer
             
             # Upload file
+            content_type = (metadata or {}).get(
+                "content-type",
+                getattr(file, "content_type", "application/octet-stream"),
+            )
             response = self.client.storage.from_(bucket).upload(
                 path=file_path,
                 file=file,
                 file_options={
-                    "content-type": file.content_type if hasattr(file, 'content_type') else 'application/octet-stream',
+                    "content-type": content_type,
                     "cache-control": "3600",
-                    "upsert": True
+                    "upsert": False
                 }
             )
             
@@ -94,7 +98,7 @@ class SupabaseStorageProvider(StorageProvider):
                 "url": public_url,
                 "bucket": bucket,
                 "size": file_size,
-                "content_type": file.content_type if hasattr(file, 'content_type') else 'application/octet-stream',
+                "content_type": content_type,
                 "metadata": metadata or {}
             }
             

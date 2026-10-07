@@ -2,22 +2,21 @@
 FastAPI Router: Stripe Checkout Session Creation
 Path: app/api/v1/checkout.py
 """
-import os
-from decimal import Decimal
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 import stripe
 
-from app.api.deps import get_db
-from app.models.product import Product
-from app.models.order import Order, OrderStatus
-from app.schemas.order import CheckoutRequest, CheckoutResponse
+from config.settings import settings
+from database.config import get_db
+from models.product import Product
+from models.order import Order, OrderStatus
+from schemas.order import CheckoutRequest, CheckoutResponse
 
 router = APIRouter(prefix="/api/checkout", tags=["checkout"])
 
-stripe.api_key = os.getenv("STRIPE_SECRET_KEY", "")
-FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:3000")
+stripe.api_key = settings.STRIPE_SECRET_KEY
+FRONTEND_URL = settings.FRONTEND_URL.rstrip("/")
 
 @router.post("", response_model=CheckoutResponse, status_code=status.HTTP_200_OK)
 async def create_checkout_session(
@@ -50,6 +49,11 @@ async def create_checkout_session(
 
     # 2. Calculate unit amount in cents (e.g. $8.50 -> 850)
     unit_amount_cents = int(product.price * 100)
+    if unit_amount_cents <= 0:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Product price is not configured for checkout.",
+        )
 
     # 3. Create Stripe Checkout Session
     try:

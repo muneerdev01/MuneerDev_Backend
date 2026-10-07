@@ -53,9 +53,21 @@ async def get_db() -> AsyncGenerator[AsyncSession, None]:
             await session.close()
 
 
+sync_database_url = DATABASE_URL.replace(
+    "postgresql+asyncpg://",
+    "postgresql+psycopg2://",
+    1,
+)
+if sync_database_url.startswith("postgresql://"):
+    sync_database_url = sync_database_url.replace(
+        "postgresql://",
+        "postgresql+psycopg2://",
+        1,
+    )
+
 # Sync engine for migrations or background tasks
 sync_engine = create_engine(
-    DATABASE_URL.replace("postgresql://", "postgresql+psycopg2://"),
+    sync_database_url,
     pool_size=5,
     max_overflow=10,
     pool_pre_ping=True,

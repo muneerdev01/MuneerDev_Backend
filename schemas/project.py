@@ -38,6 +38,16 @@ class ProjectUpdate(BaseModel):
     live_url: Optional[str] = None
     featured: Optional[bool] = None
 
+    @field_validator("slug")
+    @classmethod
+    def validate_optional_slug(cls, value: str | None) -> str | None:
+        if value is None:
+            return value
+        cleaned = value.strip().lower()
+        if not re.match(r"^[a-z0-9]+(?:-[a-z0-9]+)*$", cleaned):
+            raise ValueError("Slug must contain only lowercase alphanumeric characters and hyphens.")
+        return cleaned
+
 class ProjectRead(ProjectBase):
     id: int
     created_at: datetime

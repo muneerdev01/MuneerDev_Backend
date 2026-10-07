@@ -1,54 +1,36 @@
-"""
-FastAPI Dependencies: DB Session, Admin Auth, and Supabase Client
-Path: app/api/deps.py
-"""
-import os
+"""Shared dependencies for the API v1 routers."""
+
 from typing import AsyncGenerator
+
 from fastapi import Depends, HTTPException, status
-from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+from fastapi.security import HTTPBearer
 from sqlalchemy.ext.asyncio import AsyncSession
-from app.db.session import async_session_factory
-from supabase import create_client, Client
+from supabase import Client, create_client
+
+from config.settings import settings
+from database.config import get_db as get_database_session
+from security.rbac import require_any_role
 
 security = HTTPBearer(auto_error=True)
 
-# Supabase configuration
-SUPABASE_URL = os.getenv("SUPABASE_URL", "")
-SUPABASE_SERVICE_ROLE_KEY = os.getenv("SUPABASE_SERVICE_ROLE_KEY", "")
-ADMIN_SECRET_TOKEN = os.getenv("ADMIN_SECRET_TOKEN", "superadminsecret")
 
 async def get_db() -> AsyncGenerator[AsyncSession, None]:
-    """Async session dependency with automatic rollback on error and commit/close."""
-    async with async_session_factory() as session:
-        try:
-            yield session
-        except Exception:
-            await session.rollback()
-            raise
-        finally:
-            await session.close()
+    async for session in get_database_session():
+        yield session
+
 
 def get_supabase_client() -> Client:
-    """Returns initialized Supabase Admin Client using service role key."""
-    if not SUPABASE_URL or not SUPABASE_SERVICE_ROLE_KEY:
+    """Create a server-side Supabase client using only the service-role secret."""
+    if not settings.SUPABASE_URL or not settings.SUPABASE_SERVICE_ROLE_KEY:
         raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Supabase credentials are not configured in environment variables."
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Supabase Storage is not configured.",
         )
-    return create_client(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
+    return create_client(settings.SUPABASE_URL, settings.SUPABASE_SERVICE_ROLE_KEY)
+
 
 async def get_current_admin(
-    credentials: HTTPAuthorizationCredentials = Depends(security)
+    user: dict = Depends(require_any_role(["ADMIN", "SUPER_ADMIN"])),
 ) -> dict:
-    """
-    Validates admin bearer token. Can verify against your existing JWT auth
-    or ADMIN_SECRET_TOKEN.
-    """
-    token = credentials.credentials
-    if token != ADMIN_SECRET_TOKEN:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid admin credentials or expired token.",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
-    return {"role": "admin"}
+    """Require a verified administrator JWT for admin-only routes."""
+    return user

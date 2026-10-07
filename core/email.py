@@ -2,12 +2,14 @@
 Resend Email Service
 Path: app/core/email.py
 """
+import asyncio
 import os
+from html import escape
 from datetime import datetime
 import resend
 
 RESEND_API_KEY = os.getenv("RESEND_API_KEY", "")
-RESEND_FROM_EMAIL = os.getenv("RESEND_FROM_EMAIL", "orders@yourdomain.com")
+RESEND_FROM_EMAIL = os.getenv("RESEND_FROM_EMAIL", "")
 
 if RESEND_API_KEY:
     resend.api_key = RESEND_API_KEY
@@ -19,7 +21,11 @@ async def send_download_link_email(
     expires_at: datetime
 ) -> dict:
     """Sends a responsive HTML transactional email with the 24-hr download link."""
+    if not RESEND_API_KEY or not RESEND_FROM_EMAIL:
+        raise RuntimeError("Resend email credentials are not configured.")
     formatted_date = expires_at.strftime("%B %d, %Y at %H:%M UTC")
+    safe_title = escape(product_title)
+    safe_download_url = escape(download_url, quote=True)
 
     html_content = f"""
     <!DOCTYPE html>
@@ -29,10 +35,10 @@ async def send_download_link_email(
       <div style="max-width: 560px; margin: 0 auto; background: #171717; border: 1px solid #262626; border-radius: 12px; padding: 32px;">
         <h1 style="color: #10b981; font-size: 22px; margin-top: 0;">Thank you for your purchase!</h1>
         <p style="color: #d4d4d4; font-size: 14px; line-height: 1.6;">
-          Your digital pattern <strong>{product_title}</strong> is ready for download.
+          Your digital pattern <strong>{safe_title}</strong> is ready for download.
         </p>
         <div style="text-align: center; margin: 32px 0;">
-          <a href="{download_url}" style="background-color: #10b981; color: #0a0a0a; font-weight: 600; text-decoration: none; padding: 14px 28px; border-radius: 8px; font-size: 14px; display: inline-block;">
+          <a href="{safe_download_url}" style="background-color: #10b981; color: #0a0a0a; font-weight: 600; text-decoration: none; padding: 14px 28px; border-radius: 8px; font-size: 14px; display: inline-block;">
             Download Pattern (PDF/ZIP)
           </a>
         </div>
@@ -51,4 +57,4 @@ async def send_download_link_email(
         "html": html_content,
     }
 
-    return resend.Emails.send(params)
+    return await asyncio.to_thread(resend.Emails.send, params)

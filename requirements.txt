@@ -11,3 +11,5 @@ supabase>=2.0.0
 python-multipart>=0.0.5
 email-validator>=2.0.0
 resend
+stripe>=10.0.0
+psycopg2-binary>=2.9.0
