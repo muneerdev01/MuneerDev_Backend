@@ -2,11 +2,13 @@
 Database Mixins and Base Models
 """
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 
 from sqlalchemy import Column, DateTime
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import declarative_mixin
+
+from database.base import Base as MetadataBase
 
 
 @declarative_mixin
@@ -28,13 +30,13 @@ class TimestampMixin:
 
     created_at = Column(
         DateTime,
-        default=lambda: datetime.utcnow(),
+        default=lambda: datetime.now(timezone.utc).replace(tzinfo=None),
         nullable=False,
     )
     updated_at = Column(
         DateTime,
-        default=lambda: datetime.utcnow(),
-        onupdate=lambda: datetime.utcnow(),
+        default=lambda: datetime.now(timezone.utc).replace(tzinfo=None),
+        onupdate=lambda: datetime.now(timezone.utc).replace(tzinfo=None),
         nullable=False,
     )
 
@@ -54,6 +56,6 @@ class AuditMixin:
 
 
 # Base class combining all mixins
-class Base(UUIDMixin, TimestampMixin):
+class Base(MetadataBase, UUIDMixin, TimestampMixin):
     """Base class for all models with UUID, timestamps"""
     __abstract__ = True

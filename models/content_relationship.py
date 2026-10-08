@@ -17,7 +17,7 @@ class ContentRelationship(Base):
     target_id = Column(UUID(as_uuid=True), nullable=False)
     relationship_type = Column(String(100), nullable=False)
     display_order = Column(Integer, default=0, nullable=False)
-    metadata = Column(JSON, nullable=True)
+    metadata_ = Column("metadata", JSON, nullable=True)
 
     def __repr__(self):
         return (

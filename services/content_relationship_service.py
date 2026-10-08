@@ -71,7 +71,7 @@ class ContentRelationshipService(BaseService[ContentRelationship]):
             "target_id": target_id,
             "relationship_type": relationship_type,
             "display_order": display_order,
-            "metadata": metadata or {}
+            "metadata_": metadata or {}
         }
         return await self.create(data)
     

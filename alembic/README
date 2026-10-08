@@ -1,0 +1,6 @@
+Alembic loads the database URL from `DATABASE_URL` or the project-root `.env`
+file. Do not put credentials in `alembic.ini`.
+
+Autogeneration ignores database tables that are not represented in the ORM
+metadata to avoid proposing accidental table drops. Remove tables through
+explicit, reviewed migration operations.

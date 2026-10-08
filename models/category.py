@@ -16,7 +16,7 @@ class Category(Base):
     blog_type = Column(BlogType, nullable=False)
     entity_type = Column(EntityType, nullable=False)
     description = Column(String(1000), nullable=True)
-    metadata = Column(JSONB, nullable=True, server_default=text("'{}'"))
+    metadata_ = Column("metadata", JSONB, nullable=True, server_default=text("'{}'"))
 
     def __repr__(self):
         return f"<Category(id={self.id}, name='{self.name}', slug='{self.slug}')>"
